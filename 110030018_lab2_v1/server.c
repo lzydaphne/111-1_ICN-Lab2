@@ -35,7 +35,7 @@ typedef struct header
 {
 	unsigned int seq_num;
 	unsigned int ack_num;
-	unsigned char isLast;
+	unsigned int isLast;
 } Header;
 
 //==================
@@ -135,9 +135,8 @@ int sendFile(FILE *fd)
 
 	int numbytes;
 	int cur_seq = 0;
-	int remain_len;
+	int remain_len = filesize;
 	int snd_pkt_size;
-	int count = 0;
 	int finish = 0;
 	clock_t t_begin, duration;
 	snd_pkt.header.isLast = 0;
@@ -149,10 +148,13 @@ int sendFile(FILE *fd)
 	fseek(fd, 0, SEEK_SET);
 	memset(snd_pkt.data, '\0', sizeof(snd_pkt.data));
 	snd_pkt_size = sizeof(snd_pkt);
+	snd_pkt.header.isLast = filesize;
 	fread(snd_pkt.data, sizeof(snd_pkt.data), 1, fd);
 	numbytes = sendto(sockfd, &snd_pkt, snd_pkt_size, 0, (struct sockaddr *)&client_info, len);
+
 	printf("\tSend %d byte\n", numbytes);
 	t_begin = (clock() * 1000) / CLOCKS_PER_SEC;
+	snd_pkt.header.isLast = 0;
 
 	//======================================
 	// Checking timeout & Receive client ack
@@ -180,8 +182,6 @@ int sendFile(FILE *fd)
 			memset(snd_pkt.data, '\0', sizeof(snd_pkt.data));
 
 			int read_num = 0;
-
-			// count = remain_len; // only used to calculate last pkt_size
 			remain_len = filesize - ftell(fd);
 			// printf("\t remain_len = %d\n", remain_len);
 
@@ -190,6 +190,7 @@ int sendFile(FILE *fd)
 			else
 			{
 				read_num = fread(snd_pkt.data, sizeof(char), remain_len, fd);
+				// snd_pkt.data[remain_len + 1] = '.';
 				snd_pkt.header.isLast = 1;
 			}
 

@@ -7,6 +7,7 @@
 #include <netinet/in.h>
 #include <time.h>
 #include <arpa/inet.h>
+#
 
 /*****************notice**********************
  *
@@ -32,7 +33,7 @@ typedef struct header
 {
 	unsigned int seq_num;
 	unsigned int ack_num;
-	unsigned char is_last;
+	unsigned int is_last;
 } Header;
 
 //==================
@@ -52,6 +53,7 @@ Udp_pkt snd_pkt, rcv_pkt;
 struct sockaddr_in info, client_info;
 socklen_t len;
 time_t t1, t2;
+// extern int remain_len;
 
 //=====================
 // Simulate packet loss
@@ -74,6 +76,7 @@ int recvFile(FILE *fd)
 
 	char *str;
 	char fileName[30];
+	int getFilesize;
 
 	//==================================================================
 	// Split the command into "download" & "filename", just get filename
@@ -88,17 +91,20 @@ int recvFile(FILE *fd)
 	fd = fopen(fileName, "wb");
 
 	printf("Receiving...\n");
+
 	char buffer[123431];
 	int index = 0;
+	int rcv = 0;
 	int receive_packet = 0; // record packet seq_num we want to receive.
 	memset(snd_pkt.data, '\0', sizeof(snd_pkt.data));
 	while (1)
 	{
-		if (index = recvfrom(sockfd, &rcv_pkt, sizeof(rcv_pkt), MSG_WAITALL, (struct sockaddr *)&info, (socklen_t *)&len) != -1)
+		if (rcv = recvfrom(sockfd, &rcv_pkt, sizeof(rcv_pkt), MSG_WAITALL, (struct sockaddr *)&info, (socklen_t *)&len) != -1)
 		{
 			//=======================
 			// Simulation packet loss
 			//=======================
+
 			if (isLoss(0.5))
 			{
 				printf("\tOops! Packet loss!\n");
@@ -109,22 +115,34 @@ int recvFile(FILE *fd)
 			//==============================================
 			else if (receive_packet == rcv_pkt.header.seq_num)
 			{
+				int write_num = 0;
+				if ((rcv_pkt.header.seq_num == 0) && (rcv_pkt.header.is_last != 0))
+				{
+					getFilesize = rcv_pkt.header.is_last;
+					// printf("\t getFilesize = %d\n", getFilesize);
+					write_num = fwrite(rcv_pkt.data, sizeof(rcv_pkt.data), 1, fd);
+					getFilesize -= sizeof(rcv_pkt.data);
+				}
+
 				// printf("\tGet %d byte\n", index);
 				printf("\tReceive a packet seq_num = %d\n", rcv_pkt.header.seq_num);
-				int write_num = 0;
-				if (rcv_pkt.header.is_last == 0)
+				if ((rcv_pkt.header.seq_num != 0) && (rcv_pkt.header.is_last == 0))
+				{
 					write_num = fwrite(rcv_pkt.data, sizeof(rcv_pkt.data), 1, fd);
-				else
-					write_num = fwrite(rcv_pkt.data, sizeof(char), 551, fd);
+					getFilesize -= sizeof(rcv_pkt.data);
+				}
+				else if (rcv_pkt.header.is_last == 1)
+					write_num = fwrite(rcv_pkt.data, sizeof(char), getFilesize, fd);
 
-				printf("\t write_num = %d\n", write_num);
+				// printf("\t getFilesize = %d\n", getFilesize);
+				// printf("\t write_num = %d\n", write_num);
 
 				//====================
 				// Reply ack to server
 				//====================
 				snd_pkt.header.ack_num = receive_packet;
 				snd_pkt.header.is_last = 0;
-				index = sendto(sockfd, &snd_pkt, sizeof(snd_pkt), 0, (struct sockaddr *)&info, len);
+				sendto(sockfd, &snd_pkt, sizeof(snd_pkt), 0, (struct sockaddr *)&info, len);
 				receive_packet++;
 				//==============================================
 				// Write buffer into file if is_last flag is set
